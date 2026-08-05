@@ -680,6 +680,28 @@
   const formMsgError = document.getElementById('formMsgError');
   const formSubmitBtn = document.getElementById('formSubmitBtn');
 
+  // Отправка с автоматическими повторными попытками при сетевых сбоях
+  async function sendToTelegramWithRetry(text, maxAttempts = 3){
+    for(let attempt = 1; attempt <= maxAttempts; attempt++){
+      try{
+        const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: text })
+        });
+        const data = await resp.json();
+        if(data.ok) return true;
+        throw new Error('Telegram API error: ' + JSON.stringify(data));
+      } catch(err){
+        console.warn(`Попытка ${attempt} из ${maxAttempts} не удалась:`, err);
+        if(attempt < maxAttempts){
+          await new Promise(resolve => setTimeout(resolve, 800 * attempt)); // 800мс, 1600мс...
+        }
+      }
+    }
+    return false;
+  }
+
   leadForm.addEventListener('submit', async function(e){
     e.preventDefault();
     const name = document.getElementById('name').value.trim();
@@ -699,25 +721,17 @@
     formSubmitBtn.disabled = true;
     formSubmitBtn.textContent = 'Отправляем...';
 
-    try {
-      const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: text })
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        formMsg.style.display = 'block';
-        leadForm.reset();
-      } else {
-        throw new Error('Telegram API error');
-      }
-    } catch (err) {
+    const success = await sendToTelegramWithRetry(text);
+
+    if(success){
+      formMsg.style.display = 'block';
+      leadForm.reset();
+    } else {
       formMsgError.style.display = 'block';
-    } finally {
-      formSubmitBtn.disabled = false;
-      formSubmitBtn.textContent = 'Стать партнёром';
     }
+
+    formSubmitBtn.disabled = false;
+    formSubmitBtn.textContent = 'Стать партнёром';
   });
 </script>
 
